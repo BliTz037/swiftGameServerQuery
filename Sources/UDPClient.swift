@@ -16,33 +16,27 @@ enum QueryRequestType {
     case MC_UNCONNECTED_PING
 }
 
-protocol UDPClient {
-    func start()
-    func stop()
-    func send(challenge: Data?)
-    func receive()
-}
-
 // Each instance is isolated to a single Task and not shared between threads.
 // Safe to mark @unchecked Sendable.
-final class UDPClientImpl: @unchecked Sendable {
+final class UDPClient: @unchecked Sendable {
     private let connection: NWConnection
     private var fragments: [UInt8: Data] = [:]
     private var sentTimestamp: UInt64?
+    public var messageType: QueryRequestType
     
     init(
         host: String,
         port: UInt16,
+        messageType: QueryRequestType
     ) {
+        self.messageType = messageType
         connection = NWConnection(
             host: NWEndpoint.Host(host),
             port: NWEndpoint.Port(integerLiteral: port),
             using: .udp
         )
     }
-}
-
-extension UDPClientImpl: UDPClient {
+    
     func start() {
         connection.stateUpdateHandler = { [weak self] state in
             print("Client state: \(state)")
@@ -62,7 +56,7 @@ extension UDPClientImpl: UDPClient {
 
     func send(challenge: Data? = nil) {
         let packet: Data = self._formatPacket(
-            type: .MC_UNCONNECTED_PING,
+            type: messageType,
             challenge: challenge
         )
         print("Message to send: \(packet.hexDescription)")
@@ -135,8 +129,11 @@ extension UDPClientImpl: UDPClient {
             break
         case .challenge:
             preconditionFailure("Should not happen")
+        case .mcUnconnectedPong(let info):
+            print("MC Data: \(info)")
+            break
         default:
-            print("DEFAULT")
+            print("Nothings received...")
         }
     }
 
@@ -188,7 +185,7 @@ extension UDPClientImpl: UDPClient {
         }
         
         if payload.prefix(4) == Data([0xFE, 0xFF, 0xFF, 0xFF]) {
-            print("DATA SPLITED")
+            print("Data splited")
             let fullPayload = self.processSplitedPacket(data: payload)
             if fullPayload == nil {
                 self.receive()
@@ -218,9 +215,7 @@ extension UDPClientImpl: UDPClient {
             )
             return (.challenge(payload), true)
         case QueryResponseHeader.mcUnconnectedPong.rawValue:
-            print("TODO: Handle MC Unconnected Pong")
-            parseMinecraftBedrockUnconnectedPong(payload)
-            return (nil, false)
+            return (.mcUnconnectedPong(parseMinecraftBedrockUnconnectedPong(payload)), false)
         default:
             print("Response not handled: \(header)")
             return (nil, false)

@@ -12,6 +12,7 @@ enum QueryResponseType {
     case player(SourceA2SPlayer)
     case rules(SourceA2SRules)
     case challenge(Data)
+    case mcUnconnectedPong(MinecraftBedrockUnconnectedPong)
 }
 
 enum QueryResponseHeader: UInt8 {
